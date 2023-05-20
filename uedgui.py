@@ -39,9 +39,9 @@ import time
 import datetime
 import threading
 import tifffile
-
 import json
 import os
+import csv
 
 import translationcorr
 import calibratebravais
@@ -52,12 +52,54 @@ def findNearest(a,A,returnIndex=True):
     index = np.abs(A-a).argmin()
     return index
 
-def makeSeparatePlotWindow(fig, rootTitle):
+def makeSeparatePlotWindow(fig, rootTitle, data = None, dataHeader = ''):
+    print(data)
+    # The data arguments are just in case you want to provide a way for the user to save the data
+    # Some general formatting vars
+    padyControls = 1
+    padySep = 1
+    entryWidth = 10
+    largeEntryWidth = 20
+    sepWidth = 230
+    sepHeight = 1
+    buttonWidth = 18
+    cntrlBg = '#2F8D35'
+    
     separate_root = tk.Tk()
     separate_root.title(rootTitle)
     separate_canvas = FigureCanvasTkAgg(fig, master=separate_root)
     separate_canvas.draw()
     separate_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    
+    # Make a Tkinter frame for the controls
+    controls = tk.Frame(master=separate_root, width=50, height=100, padx=5, pady=5)
+    controls.pack(side=tk.LEFT)
+    
+    def saveDataButtonFunc():
+        file_path = fd.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")])
+        
+        if type(data) == type(np.array([])):
+            np.savetxt(file_path,data,delimiter = ',',header = dataHeader)
+            
+        if type(data) == type([]):
+            # Transpose the list of lists using zip
+            transposed_data = zip(*data)
+            with open(file_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(dataHeader)  # Write the header
+                writer.writerows(transposed_data)
+        
+                
+    saveDataButton = tk.Button(
+        master=controls,
+        text="Save Plot Data",
+        width=buttonWidth,
+        height=1,
+        fg='black', bg='white',
+        command=saveDataButtonFunc)
+        
+    saveDataButton.pack()
+    
     
     # Add the Matplotlib toolbar to the separate window
     toolbar = NavigationToolbar2Tk(separate_canvas, separate_root)
@@ -86,7 +128,13 @@ def makeProfilePlot3d(time, data, xdata, tlabel, xlabel, rootTitle, title):
     # Set title for the colorbar
     cbar.set_label(tlabel, rotation=90, labelpad=10)
     
-    makeSeparatePlotWindow(fig, rootTitle)
+    dataToSave = [xdata]
+    header = ['xdata']
+    for i in range(len(data[:,0])):
+        dataToSave.append(data[i,:])
+        header.append(f'pos {i}')
+
+    makeSeparatePlotWindow(fig, rootTitle, data = dataToSave, dataHeader = header)
 
 class RoiRectangle():
     def __init__(self,cx,cy,w,h,ax):
@@ -98,6 +146,8 @@ class RoiRectangle():
         tl_y = self.cy - h/2
         self.patch = patches.Rectangle((tl_x, tl_y), self.w, self.h, linewidth=1, edgecolor='r', facecolor='none', alpha=0.8)
         self.live = False
+        self.onColor = 'white'
+        self.offColor = 'red'
         
         self.cRadius = 1
         # ~ self.cpatch = patches.Circle((self.cx,self.cy),self.cRadius, edgecolor=(1, 0, 0, 0.5), facecolor=(1, 0, 0, 1),fill=False)
@@ -127,7 +177,8 @@ class RoiRectangle():
         self.roiTitle.set_text(f'{int(self.cx)}, {int(self.cy)}')
     
     def goDead(self):
-        #self.patch.set_edgecolor('red')
+        self.patch.set_edgecolor(self.offColor)
+        self.roiTitle.set_color(self.offColor)
         self.live = False
         
     def goLive(self):
@@ -140,7 +191,8 @@ class RoiRectangle():
         self.patch.set_xy((tl_x,tl_y)) # Update patch top left corner
         self.patch.set_width(self.w) # Update the patch with new width
         self.patch.set_height(self.h) # Update the patch with new height
-        #self.patch.set_edgecolor('green')
+        self.patch.set_edgecolor(self.onColor)
+        self.roiTitle.set_color(self.onColor)
         self.live = True
         
     def updateAxis(self, ax):
@@ -175,7 +227,9 @@ class RoiRectangle():
             axs[1].set_xlabel('Y Axis (pixels)')
             axs[1].set_title('Averaged over X Axis')
             
-            makeSeparatePlotWindow(fig, rootTitle)
+            dataToSave = [lineprofile_x,lineprofile_y]
+            header = ['x profile', 'y profile']
+            makeSeparatePlotWindow(fig, rootTitle, data = dataToSave, dataHeader = header)
 
         return xpixels, lineprofile_x, ypixels, lineprofile_y
 
@@ -199,6 +253,10 @@ class timeTraceGUI():
         
         #Selection variables
         self.timeZeroPos = 0
+        
+        self.aReciprocal = np.array([0,0])
+        self.bReciprocal = np.array([0,0])
+        self.gammaReciprocal = np.array([0,0])
         
         # Data display settings and variables
         self.wait = wait
@@ -249,10 +307,16 @@ class timeTraceGUI():
                 roiImages = []
                 cxs, cys = [], []
                 for r in self.rm:
-                    roiImages.append(r.getRoiImage(self.imageSet[self.liveImageIndex]))
-                    cxs.append(r.cx)
-                    cys.append(r.cy)
+                    # Only count an ROI if it is active
+                    if r.live:
+                        roiImages.append(r.getRoiImage(self.imageSet[self.liveImageIndex]))
+                        cxs.append(r.cx)
+                        cys.append(r.cy)
                 gamma, a, b = calibratebravais.measureLattice(self.imageSet[self.liveImageIndex],roiImages, cxs, cys, self.calibrationMillerIndicesEntry.get())
+                # Store the reciprocal lattice vectors as global variables on this object
+                self.aReciprocal = a
+                self.bReciprocal = b
+                self.gammaReciprocal = gamma
                 latticePlotOrder=16
                 for i in range(latticePlotOrder):
                     for j in range(latticePlotOrder):
@@ -277,7 +341,9 @@ class timeTraceGUI():
         self.bravaisLatticePlotObjects = [] # A list that holds all of the plots associated with a bravias lattice calibration
         
         self.calibrationMillerIndicesEntry = tk.Entry(master=self.controls, width = entryWidth)
-        
+        self.roiFromMillerIndicesEntry = tk.Entry(master=self.controls, width = entryWidth)
+        self.roiFromMillerIndicesSizeEntry = tk.Entry(master=self.controls, width = entryWidth)
+        self.roiFromMillerIndicesSizeEntry.insert(-1,50)
         
         self.measureSelection = tk.StringVar(self.controls)
         self.measureSelection.set("time trace of gaussian fit") # default value
@@ -311,71 +377,89 @@ class timeTraceGUI():
             selection = self.measureSelection.get()
             if selection == "static profile of current image":
                 for r in self.rm:
-                    r.getProfile(self.imageSet[self.liveImageIndex])
+                    # Only count an ROI if it is active
+                    if r.live:
+                        r.getProfile(self.imageSet[self.liveImageIndex])
             if selection == "time trace of profile":
                 for r in self.rm:
-                    data_0 = r.getProfile(self.imageSet[0], genPlots = False)
-                    if self.roiSelection.get() == "rectangle":
-                        data_x = np.empty([len(self.activexdata),len(data_0[1])])
-                        data_y = np.empty([len(self.activexdata),len(data_0[3])])
-                        
-                        for p in range(len(self.activexdata)):
-                           _ , data_x[p], _ , data_y[p] = r.getProfile(self.imageSet[p], genPlots = False)
-                        
-                        makeProfilePlot3d(self.activexdata, data_x, data_0[0], self.activexlabel, 'X-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over Y Axis")
-                        makeProfilePlot3d(self.activexdata, data_y, data_0[2], self.activexlabel, 'Y-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over X Axis")
+                    # Only count an ROI if it is active
+                    if r.live:
+                        data_0 = r.getProfile(self.imageSet[0], genPlots = False)
+                        if self.roiSelection.get() == "rectangle":
+                            data_x = np.empty([len(self.activexdata),len(data_0[1])])
+                            data_y = np.empty([len(self.activexdata),len(data_0[3])])
+                            
+                            for p in range(len(self.activexdata)):
+                               _ , data_x[p], _ , data_y[p] = r.getProfile(self.imageSet[p], genPlots = False)
+                            
+                            makeProfilePlot3d(self.activexdata, data_x, data_0[0], self.activexlabel, 'X-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over Y Axis")
+                            makeProfilePlot3d(self.activexdata, data_y, data_0[2], self.activexlabel, 'Y-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over X Axis")
             if selection == "static gaussian fit to current image":
                 for r in self.rm:
-                    roiImage = r.getRoiImage(self.imageSet[self.liveImageIndex])
-                    fig, ax, popt, rms, guess_prms = translationcorr.fitImageToGaussian(roiImage, returnFigs = True)
-                    # Translate the x and y fit values back to the coordinate system of the full image
-                    popt[0] += r.cx - r.w/2 
-                    popt[1] += r.cy - r.h/2
-                    ax.set_title(f'$x_0$ = {round(popt[0],3)}, $y_0$ = {round(popt[1],3)}')
-                    makeSeparatePlotWindow(fig, rootTitle = f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}")
-                    varNames = ['x_0', 'y_0', 'sigma_x', 'sigma_y', 'amplitude', 'offset', 'rotAngle']
-                    print('__________________')
-                    for vi in range(len(varNames)):
-                        print(f'{varNames[vi]} = {popt[vi]}')
+                    # Only count an ROI if it is active
+                    if r.live:
+                        roiImage = r.getRoiImage(self.imageSet[self.liveImageIndex])
+                        fig, ax, popt, rms, guess_prms = translationcorr.fitImageToGaussian(roiImage, returnFigs = True)
+                        # Translate the x and y fit values back to the coordinate system of the full image
+                        popt[0] += r.cx - r.w/2 
+                        popt[1] += r.cy - r.h/2
+                        ax.set_title(f'$x_0$ = {round(popt[0],3)}, $y_0$ = {round(popt[1],3)}')
+                        makeSeparatePlotWindow(fig, rootTitle = f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}", data = roiImage)
+                        varNames = ['x_0', 'y_0', 'sigma_x', 'sigma_y', 'amplitude', 'offset', 'rotAngle']
+                        print('__________________')
+                        for vi in range(len(varNames)):
+                            print(f'{varNames[vi]} = {popt[vi]}')
             if selection == "time trace of gaussian fit":
-                popts = np.empty([len(self.rm),7,len(self.activexdata)])
-                for ri in range(len(self.rm)):
+                rmLoc = [] # Local rm array that only stores the live rois
+                for r in self.rm:
+                    # Only count an ROI if it is active
+                    if r.live:
+                        rmLoc.append(r)
+                popts = np.empty([len(rmLoc),7,len(self.activexdata)])
+                for ri in range(len(rmLoc)):
                     for p in range(len(self.activexdata)):
-                        roiImage = self.rm[ri].getRoiImage(self.imageSet[p])
+                        roiImage = rmLoc[ri].getRoiImage(self.imageSet[p])
                         popt, rms, guess_prms = translationcorr.fitImageToGaussian(roiImage)
                         popts[ri,:,p] = popt
                         
                 fig, ax = plt.subplots(2,1)
-                ax[0].plot(self.activexdata,np.mean(popts[:,4,:]*popts[:,3,:]*popts[:,2,:],axis=0))
+                avg_intensity = np.mean(popts[:,4,:]*popts[:,3,:]*popts[:,2,:],axis=0)
+                ax[0].plot(self.activexdata,avg_intensity)
                 ax[0].set_xlabel(self.activexlabel)
                 ax[0].set_ylabel('Avg Intensity')
-                for ri in range(len(self.rm)):
+                for ri in range(len(rmLoc)):
                     ax[1].plot(self.activexdata,popts[ri,4,:]*popts[ri,3,:]*popts[ri,2,:], label = f'{int(self.rm[ri].cx)}, {int(self.rm[ri].cy)}')
                 ax[1].set_xlabel(self.activexlabel)
                 ax[1].set_ylabel('Intensity')
                 ax[1].legend()
-                    
-                makeSeparatePlotWindow(fig, 'Intensity Plot')
+                
+                dataToSave = np.array([self.dsPositions,avg_intensity]).transpose()
+                makeSeparatePlotWindow(fig, 'Intensity Plot', data = dataToSave, dataHeader = 'dsPos (mm), intensity')
                 
                 fig, ax = plt.subplots(2,1)
-                ax[0].plot(self.activexdata,np.mean(popts[:,3,:]*popts[:,2,:],axis=0))
+                avg_area = np.mean(popts[:,3,:]*popts[:,2,:],axis=0)
+                ax[0].plot(self.activexdata,avg_area)
                 ax[0].set_xlabel(self.activexlabel)
                 ax[0].set_ylabel('Avg Area')
-                for ri in range(len(self.rm)):
+                for ri in range(len(rmLoc)):
                     ax[1].plot(self.activexdata,popts[ri,3,:]*popts[ri,2,:], label = f'{int(self.rm[ri].cx)}, {int(self.rm[ri].cy)}')
                 ax[1].set_xlabel(self.activexlabel)
                 ax[1].set_ylabel('Area')
                 ax[1].legend()
-                makeSeparatePlotWindow(fig, 'Area Plot')
+                
+                dataToSave = np.array([self.dsPositions,avg_area]).transpose()
+                makeSeparatePlotWindow(fig, 'Area Plot', data = dataToSave, dataHeader = 'dsPos (mm), area')
                 
                 fig, axs = plt.subplots(2,2)
-                axs[0,0].plot(self.activexdata,np.mean(popts[:,0,:],axis=0))
-                axs[0,1].plot(self.activexdata,np.mean(popts[:,1,:],axis=0))
+                avg_x = np.mean(popts[:,0,:],axis=0)
+                avg_y = np.mean(popts[:,1,:],axis=0)
+                axs[0,0].plot(self.activexdata,avg_x)
+                axs[0,1].plot(self.activexdata,avg_y)
                 axs[0,0].set_xlabel(self.activexlabel)
                 axs[0,0].set_ylabel('Avg X (pixels)')
                 axs[0,1].set_xlabel(self.activexlabel)
                 axs[0,1].set_ylabel('Avg Y (pixels)')
-                for ri in range(len(self.rm)):
+                for ri in range(len(rmLoc)):
                     axs[1,0].plot(self.activexdata,popts[ri,0,:], label = f'{int(self.rm[ri].cx)}, {int(self.rm[ri].cy)}')
                     axs[1,1].plot(self.activexdata,popts[ri,1,:], label = f'{int(self.rm[ri].cx)}, {int(self.rm[ri].cy)}')
                 axs[1,0].set_xlabel(self.activexlabel)
@@ -384,9 +468,9 @@ class timeTraceGUI():
                 axs[1,1].set_ylabel('Y (pixels)')
                 axs[1,0].legend()
                 axs[1,1].legend()
-                makeSeparatePlotWindow(fig, 'XY Plot')
+                dataToSave = np.array([self.dsPositions,avg_x,avg_y]).transpose()
+                makeSeparatePlotWindow(fig, 'XY Plot', data = dataToSave, dataHeader = 'dsPos (mm), xpos, ypos')
                     
-        
         self.measureButton = tk.Button(
             master=self.controls,
             text="Measure",
@@ -437,7 +521,6 @@ class timeTraceGUI():
         self.cmapSelectionMenu = tk.OptionMenu(self.controls, self.cmapSelection, 'viridis', 'plasma', 'inferno', 'magma', 'cividis', "bwr", "jet", "gray", command = cmapSelectionFunc)
         
         
-        
         self.cursorPosLabelVar = tk.StringVar()
         self.cursorPosLabelVar.set('Coordinates: (-,-)')
         self.cursorPosLabel = tk.Label(master=self.controls,textvar=self.cursorPosLabelVar,bg=cntrlBg)
@@ -469,6 +552,19 @@ class timeTraceGUI():
             fg='black', bg='white',
             command=getBgValueButtonFunc)
     
+
+        def savePixelSumPlotButtonFunc():
+            file_path = fd.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")])
+            np.savetxt(file_path,np.array([self.dsPositions,self.dataSignal]).transpose(),delimiter=',',header='dsPos (mm), pixelSum')
+            
+        self.savePixelSumPlotButton = tk.Button(
+            master=self.controls,
+            text="Save Pixel Sum Data",
+            width=buttonWidth,
+            height=1,
+            fg='black', bg='white',
+            command=savePixelSumPlotButtonFunc)
+    
         
         # setup the enter key to update entries
         def userPressReturn(event):
@@ -485,6 +581,12 @@ class timeTraceGUI():
                 self.bgSubtractValue = float(self.bgSubtractValueEntry.get())
                 self.bgSubtract_label_string.set(f'bg subtract value = {self.bgSubtractValue}')
                 self.getTrace() # Update the trace with this bg subtract value
+            if entry == self.roiFromMillerIndicesEntry:
+                self.setRoiFromMiller()
+            if entry == self.calibrationMillerIndicesEntry:
+                calibrateBravaisLatticeButtonFunc() # execute the bravais lattice calibration same as the button on enter
+                
+                
                 
         # Bind the enter key to activate selected entry
         self.root.bind('<Return>', userPressReturn)
@@ -497,9 +599,13 @@ class timeTraceGUI():
         self.cmapSelectionMenu.pack(pady = padyControls, anchor='nw')
         tk.Frame(master=self.controls, bd=100, relief='flat',height=sepHeight,width=sepWidth,bg='black').pack(side='top', pady=padySep)
         self.roiSelectionMenu.pack(pady = padyControls, anchor='nw')
-        self.calibrateBravaisLatticeButton.pack(pady = padyControls, anchor='nw')
-        tk.Label(master=self.controls,text='Miller Indices e.g. "(0,1)(1,0)(0,2)"',bg=cntrlBg).pack(pady=padyControls, anchor='nw')
+        tk.Label(master=self.controls,text='Calibrate Miller Indices e.g. "(0,1)(1,0)(0,2)"',bg=cntrlBg).pack(pady=padyControls, anchor='nw')
         self.calibrationMillerIndicesEntry.pack(pady = padyControls, anchor='nw')
+        self.calibrateBravaisLatticeButton.pack(pady = padyControls, anchor='nw')
+        tk.Label(master=self.controls,text='ROIs from miller indices "(m,n)..."',bg=cntrlBg).pack(pady=padyControls, anchor='nw')
+        self.roiFromMillerIndicesEntry.pack(pady=padyControls, anchor='nw')
+        tk.Label(master=self.controls,text='roi sizes "50,30,..."',bg=cntrlBg).pack(pady=padyControls, anchor='nw')
+        self.roiFromMillerIndicesSizeEntry.pack(pady=padyControls, anchor='nw')
         tk.Frame(master=self.controls, bd=100, relief='flat',height=sepHeight,width=sepWidth,bg='black').pack(side='top', pady=padySep)
         tZeroPos_label.pack(pady = padyControls, anchor='nw')
         self.tZeroPosEntry.pack(pady = padyControls, anchor='nw')
@@ -512,6 +618,8 @@ class timeTraceGUI():
         tk.Label(master=self.controls,text='Measurements',bg=cntrlBg).pack(pady=padyControls, anchor='nw')
         self.measureSelectionMenu.pack(pady = padyControls, anchor='nw')
         self.measureButton.pack(pady = padyControls, anchor='nw')
+        tk.Frame(master=self.controls, bd=100, relief='flat',height=sepHeight,width=sepWidth,bg='black').pack(side='top', pady=padySep)
+        self.savePixelSumPlotButton.pack(pady = padyControls, anchor='nw')
         
         # Get the initial image set
         # ~ x, y = np.linspace(-5,3,500), np.linspace(-3,3,333)
@@ -666,19 +774,27 @@ class timeTraceGUI():
             if event.button == 3:
                 for i in range(len(self.rm)):
                     if self.rm[i].checkClicked(event.xdata,event.ydata):
-                        self.rm[i].destroy()
-                        self.rm.pop(i) # Pop this item from the rm list
-                        break # Exits the loop on the first occurance of a ROI to remove.
+                        if self.rm[i].live:
+                            self.rm[i].goDead()
+                        else:
+                            self.rm[i].goLive()
+                        
+                        if event.key == 'control':
+                            self.rm[i].destroy()
+                            self.rm.pop(i) # Pop this item from the rm list
+                            
+                        break # Exits the loop on the first occurance of an ROI
 
             self.getTrace() # Draw the new time trace with this ROI
             self.canvas.draw()
     
     def camonrelease(self,event):
-        if self.relocatingRoi != None:
-            self.relocatingRoi.goLive()
-            self.relocatingRoi = None
-            self.getTrace() # Draw the new time trace with this ROI
-            self.canvas.draw() # Draw the new roi color to show that it is live
+        if event.button == 1:
+            if self.relocatingRoi != None:
+                self.relocatingRoi.goLive()
+                self.relocatingRoi = None
+                self.getTrace() # Draw the new time trace with this ROI
+                self.canvas.draw() # Draw the new roi color to show that it is live
     
     def camonscroll(self, event, base_scale = 1.15):
         # ~ print(event.button)
@@ -729,7 +845,7 @@ class timeTraceGUI():
             ax.set_ylim(*ylims)
             
             self.canvas.draw()
-    
+
     def camonmove(self, event):
         ax = self.imageAx
         if event.inaxes == ax:
@@ -744,7 +860,6 @@ class timeTraceGUI():
                     self.relocatingRoi.updatePosition(event.xdata - self.relocatePin_x, event.ydata - self.relocatePin_y)
                     self.canvas.draw()
                 
-    
     def clearRois(self):
         # Clear all existing ROIS
         for i in range(len(self.rm)):
@@ -781,7 +896,24 @@ class timeTraceGUI():
         else:
             self.dataSignal = 0*self.dataSignal
         self.datacanvas.draw()
-
+    
+    def setRoiFromMiller(self):
+        vals = calibratebravais.parse_cmis(self.roiFromMillerIndicesEntry.get())
+        self.roiFromMillerIndicesEntry.delete(0,tk.END) # Clear this entry after the ROI has been created
+        for vi in range(len(vals[:,0])):
+            vec = self.aReciprocal*vals[vi,0] + self.bReciprocal*vals[vi,1] + self.gammaReciprocal
+            # Create an ROI at this vector position
+            sizes = calibratebravais.parse_cmis(self.roiFromMillerIndicesSizeEntry.get())[0] # We only take the 1st tuple here
+            if len(sizes) == 1:
+                w, h = sizes[0], sizes[0]
+            else:
+                w, h = sizes[0], sizes[1]
+            
+            self.rm.append(RoiRectangle(vec[0],vec[1],w,h,self.imageAx))
+            self.rm[-1].goLive() # Set the roi that was just placed to live status
+            
+        self.getTrace() # Draw the new time trace with this ROI
+        self.canvas.draw()
         
 if __name__ == '__main__':
     guiObj = timeTraceGUI()

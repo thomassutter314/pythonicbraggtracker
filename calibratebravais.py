@@ -8,6 +8,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTk, NavigationToolbar2
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg,
     NavigationToolbar2Tk)
+import math
 
 import translationcorr
 
@@ -82,21 +83,43 @@ def measureLattice(sampleImage, roiImages, cxs, cys, cmis, exponent = 4, lattice
     
     plt.show()
     
+# evaluate string expression
+def eve(expression):
+    expression = expression.replace('x', '*')  # Replace 'x' with '*'
+    expression = expression.replace('sqrt', 'math.sqrt')  # Replace 'sqrt' with 'math.sqrt'
+
+    try:
+        result = eval(expression)
+        if isinstance(result, (int, float)):
+            return float(result)
+    except (SyntaxError, NameError, ZeroDivisionError, ValueError):
+        pass
+
+    # If an error occurs or the result is not a number, return None
+    return None
+
 
 def parse_cmis(s):
-    MI = np.zeros([3,2]) # miller indices of selected bragg peaks
-    for i in range(3):
+    MI = []# miller indices of selected bragg peaks
+    while len(s) > 0:
         i1 = 1 + s.find('(')
         i2 = s[i1:].find(')')
-        #print(s)
-        #print(s[i1:i1+i2].split(','))
-        
-        MI[i,:] = list(map(float,s[i1:i1+i2].split(',')))
-        
-        s = s[i1+i2+1:]
-        #print(s)
+        #print(i1,i2)
+        # Check if any "(" or ")" was found
+        if i1 > 0 and i2 > -1:
+            MI.append(list(map(eve,s[i1:i1+i2].split(','))))
+            s = s[i1+i2+1:]
+        else:
+            MI.append(list(map(eve,s.split(','))))
+            s = ''
+    MI = np.array(MI)
     return MI
         
 
 
-parse_cmis('(0,1)(1,0)(0,2)')
+
+if __name__ == '__main__':
+    a = parse_cmis('(0,1+1)(1,0)(0,2)')
+    print(a)
+
+    
