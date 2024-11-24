@@ -31,7 +31,7 @@ from matplotlib.backends.backend_tkagg import (
     NavigationToolbar2Tk)
     
 # Use a matplotlib backend that doesn't have an associated gui
-#plt.switch_backend('agg')
+# ~ plt.switch_backend('agg')
 
 import numpy as np
 import scipy
@@ -45,14 +45,10 @@ import csv
 
 import translationcorr
 import calibratebravais
+import utils
 
 
-def findNearest(a,A,returnIndex=True):
-    #Returns the index for which the array A is closest to the float a
-    index = np.abs(A-a).argmin()
-    return index
-
-def makeSeparatePlotWindow(fig, rootTitle, data = None, dataHeader = ''):
+def make_separate_plot_window(fig, rootTitle, data = None, dataHeader = ''):
     print(data)
     # The data arguments are just in case you want to provide a way for the user to save the data
     # Some general formatting vars
@@ -106,7 +102,7 @@ def makeSeparatePlotWindow(fig, rootTitle, data = None, dataHeader = ''):
     toolbar.update()
     separate_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
     
-def makeProfilePlot3d(time, data, xdata, tlabel, xlabel, rootTitle, title):
+def make_profile_plot3d(time, data, xdata, tlabel, xlabel, rootTitle, title):
     fig, ax = plt.subplots()
     
     # Create a list of colors corresponding to each plot
@@ -134,7 +130,7 @@ def makeProfilePlot3d(time, data, xdata, tlabel, xlabel, rootTitle, title):
         dataToSave.append(data[i,:])
         header.append(f'pos {i}')
 
-    makeSeparatePlotWindow(fig, rootTitle, data = dataToSave, dataHeader = header)
+    make_separate_plot_window(fig, rootTitle, data = dataToSave, dataHeader = header)
 
 class RoiRectangle():
     def __init__(self,cx,cy,w,h,ax):
@@ -229,7 +225,7 @@ class RoiRectangle():
             
             dataToSave = [lineprofile_x,lineprofile_y]
             header = ['x profile', 'y profile']
-            makeSeparatePlotWindow(fig, rootTitle, data = dataToSave, dataHeader = header)
+            make_separate_plot_window(fig, rootTitle, data = dataToSave, dataHeader = header)
 
         return xpixels, lineprofile_x, ypixels, lineprofile_y
 
@@ -392,19 +388,19 @@ class timeTraceGUI():
                             for p in range(len(self.activexdata)):
                                _ , data_x[p], _ , data_y[p] = r.getProfile(self.imageSet[p], genPlots = False)
                             
-                            makeProfilePlot3d(self.activexdata, data_x, data_0[0], self.activexlabel, 'X-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over Y Axis")
-                            makeProfilePlot3d(self.activexdata, data_y, data_0[2], self.activexlabel, 'Y-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over X Axis")
+                            make_profile_plot3d(self.activexdata, data_x, data_0[0], self.activexlabel, 'X-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over Y Axis")
+                            make_profile_plot3d(self.activexdata, data_y, data_0[2], self.activexlabel, 'Y-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over X Axis")
             if selection == "static gaussian fit to current image":
                 for r in self.rm:
                     # Only count an ROI if it is active
                     if r.live:
                         roiImage = r.getRoiImage(self.imageSet[self.liveImageIndex])
-                        fig, ax, popt, rms, guess_prms = translationcorr.fitImageToGaussian(roiImage, returnFigs = True)
+                        fig, ax, popt, rms, guess_prms = translationcorr.fit_image_to_gaussian(roiImage, return_figs = True)
                         # Translate the x and y fit values back to the coordinate system of the full image
                         popt[0] += r.cx - r.w/2 
                         popt[1] += r.cy - r.h/2
                         ax.set_title(f'$x_0$ = {round(popt[0],3)}, $y_0$ = {round(popt[1],3)}')
-                        makeSeparatePlotWindow(fig, rootTitle = f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}", data = roiImage)
+                        make_separate_plot_window(fig, rootTitle = f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}", data = roiImage)
                         varNames = ['x_0', 'y_0', 'sigma_x', 'sigma_y', 'amplitude', 'offset', 'rotAngle']
                         print('__________________')
                         for vi in range(len(varNames)):
@@ -419,7 +415,7 @@ class timeTraceGUI():
                 for ri in range(len(rmLoc)):
                     for p in range(len(self.activexdata)):
                         roiImage = rmLoc[ri].getRoiImage(self.imageSet[p])
-                        popt, rms, guess_prms = translationcorr.fitImageToGaussian(roiImage)
+                        popt, rms, guess_prms = translationcorr.fit_image_to_gaussian(roiImage)
                         popts[ri,:,p] = popt
                         
                 fig, ax = plt.subplots(2,1)
@@ -434,7 +430,7 @@ class timeTraceGUI():
                 ax[1].legend()
                 
                 dataToSave = np.array([self.dsPositions,avg_intensity]).transpose()
-                makeSeparatePlotWindow(fig, 'Intensity Plot', data = dataToSave, dataHeader = 'dsPos (mm), intensity')
+                make_separate_plot_window(fig, 'Intensity Plot', data = dataToSave, dataHeader = 'dsPos (mm), intensity')
                 
                 fig, ax = plt.subplots(2,1)
                 avg_area = np.mean(popts[:,3,:]*popts[:,2,:],axis=0)
@@ -448,7 +444,7 @@ class timeTraceGUI():
                 ax[1].legend()
                 
                 dataToSave = np.array([self.dsPositions,avg_area]).transpose()
-                makeSeparatePlotWindow(fig, 'Area Plot', data = dataToSave, dataHeader = 'dsPos (mm), area')
+                make_separate_plot_window(fig, 'Area Plot', data = dataToSave, dataHeader = 'dsPos (mm), area')
                 
                 fig, axs = plt.subplots(2,2)
                 avg_x = np.mean(popts[:,0,:],axis=0)
@@ -469,7 +465,7 @@ class timeTraceGUI():
                 axs[1,0].legend()
                 axs[1,1].legend()
                 dataToSave = np.array([self.dsPositions,avg_x,avg_y]).transpose()
-                makeSeparatePlotWindow(fig, 'XY Plot', data = dataToSave, dataHeader = 'dsPos (mm), xpos, ypos')
+                make_separate_plot_window(fig, 'XY Plot', data = dataToSave, dataHeader = 'dsPos (mm), xpos, ypos')
                     
         self.measureButton = tk.Button(
             master=self.controls,
@@ -485,7 +481,7 @@ class timeTraceGUI():
         def differenceImageBoxFunc():            
             if self.varDifferenceImage.get() == 1:
                 self.tZeroPosEntry.config(state='disabled') # Disable the time zero entry while the difference image is active
-                tz_index = findNearest(self.timeZeroPos,self.dsPositions)
+                tz_index = utils.find_nearest(self.timeZeroPos,self.dsPositions)
                 self.btzImage = np.mean(self.imageSet[tz_index:],axis=0)
                 for pi in range(len(self.dsPositions)):
                     self.imageSet[pi] -= self.btzImage
