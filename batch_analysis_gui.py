@@ -48,8 +48,7 @@ import utils
 import simplerois
 
 
-def make_separate_plot_window(fig, rootTitle, data = None, dataHeader = ''):
-    print(data)
+def make_separate_plot_window(fig, rootTitle, data = None, dataHeader = '', plot_legend = False):
     # The data arguments are just in case you want to provide a way for the user to save the data
     # Some general formatting vars
     padyControls = 1
@@ -60,6 +59,9 @@ def make_separate_plot_window(fig, rootTitle, data = None, dataHeader = ''):
     sepHeight = 1
     buttonWidth = 18
     cntrlBg = '#2F8D35'
+    
+    if plot_legend:
+        plt.legend()
     
     separate_root = tk.Tk()
     separate_root.title(rootTitle)
@@ -240,7 +242,7 @@ class timeTraceGUI():
                 ax[1].set_ylabel('Intensity')
                 ax[1].legend()
                 
-                dataToSave = np.array([self.dsPositions,avg_intensity]).transpose()
+                dataToSave = np.array([self.dsPositions, avg_intensity]).transpose()
                 make_separate_plot_window(fig, 'Intensity Plot', data = dataToSave, dataHeader = 'dsPos (mm), intensity')
             if selection == "static profile of current image":
                 for r in self.rm:
@@ -363,17 +365,48 @@ class timeTraceGUI():
             command=measureButtonFunc)
         
         def batchAnalysisButtonFunc():
-            dirlist = os.listdir(self.scandir)
+                        # ~ selection = self.measureSelection.get()
+            # ~ if selection == "time trace of pixel sum":
             
-            selection = self.measureSelection.get()
-            if selection == "time trace of pixel sum":
-                rmLoc = [] # Local rm array that only stores the live rois
-                for r in self.rm:
-                    # Only count an ROI if it is active
-                    if r.live:
-                        rmLoc.append(r)
+            rmLoc = [] # Local rm array that only stores the live rois
+            for r in self.rm:
+                # Only count an ROI if it is active
+                if r.live:
+                    rmLoc.append(r)
+                    
+            # Get the batch directories and sort them
+            dirlist = os.listdir(self.scandir)
+            batchlist = [x for x in dirlist if x[:5] == 'batch' and x[5:].isnumeric()]
+            batchnums = [int(x[5:]) for x in batchlist]
+            batchlist_sorted = sorted(tuple(zip(batchnums, batchlist)), key = lambda t: t[0])
+            batchlist_sorted = [x[1] for x in batchlist_sorted]
+            
+            batch_intensities = np.empty([len(batchlist_sorted), len(self.activexdata)])
+            # Load the images from each batch
+            for bi in range(len(batchlist_sorted)):
+                _, batchImageSet = utils.load_images_smartscan_single_fluence(f'{self.scandir}//{batchlist_sorted[bi]}') # This function assumes the scan is for a single fluence
                 pixel_sums = np.empty([len(rmLoc), len(self.activexdata)])
                 roi_areas = np.empty(len(rmLoc))
+                
+                for ri in range(len(rmLoc)):
+                    for p in range(len(self.activexdata)):
+                        roiImage = rmLoc[ri].getRoiImage(batchImageSet[p])
+                        pixel_sums[ri, p] = np.sum(roiImage)
+                    roi_areas[ri] = roiImage.shape[0]*roiImage.shape[1]
+                
+                batch_intensities[bi, :] = np.sum(pixel_sums, axis=0)/np.sum(roi_areas)
+                    
+            fig, ax = plt.subplots(1,1)
+            for bi in range(len(batchlist_sorted)):
+                ax.plot(self.activexdata, batch_intensities[bi, :], label = f'{batchlist_sorted[bi]}')
+            ax.set_xlabel(self.activexlabel)
+            ax.set_ylabel('Avg Intensity')
+            
+            print(self.dsPositions.shape)
+            print(batch_intensities.shape)
+            dataToSave = np.append(self.dsPositions[None, :], batch_intensities, axis = 0).transpose()
+            print(dataToSave.shape)
+            make_separate_plot_window(fig, 'Intensity Plot', data = dataToSave, dataHeader = 'dsPos (mm), intensity', plot_legend = True)
 
         self.batchAnalysisButton = tk.Button(
             master=self.controls,
@@ -805,5 +838,5 @@ class timeTraceGUI():
     
         
 if __name__ == '__main__':
-    guiObj = timeTraceGUI(scandir = r"C:\Users\thoma\OneDrive - UCLA IT Services\Desktop\OneDrive - UCLA IT Services\Research\TaS2SelfIntercalationProject\exhibits\G\2024_7_6_weekend2x2Scan_prelim\2024_7_6_weekend2x2Scan_prelim")
+    guiObj = timeTraceGUI(scandir = r"C:\Users\thoma\OneDrive - UCLA IT Services\Desktop\OneDrive - UCLA IT Services\Research\TaS2SelfIntercalationProject\exhibits\G\2024_7_9_2x2LongScan_prelim\2024_7_9_2x2LongScan_prelim")
     # ~ guiObj = timeTraceGUI(scandir = r"D:\2024_8_9_check_t0_scan_5")
