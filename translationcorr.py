@@ -36,7 +36,7 @@ def determine_guess_params(z_roi,x_roi,y_roi,preliminaryScanNumber,verbose=False
         fancy_guessVal_x = 0
 
     if verbose == True:
-        plotStack(X_ROI,Y_scanned,Z_scannedX)
+        plotStack(x_roi,Y_scanned,Z_scannedX)
         plt.plot(x_maximizing,Y_scanned,np.zeros(len(x_maximizing)),'-g',linewidth=4)
         plt.plot(np.ones(len(x_maximizing))*guessVal_x,Y_scanned,np.zeros(len(x_maximizing)),'--k')
         plt.title("X scan")
@@ -64,7 +64,7 @@ def determine_guess_params(z_roi,x_roi,y_roi,preliminaryScanNumber,verbose=False
         fancy_guessVal_y = 0
 
     if verbose == True:
-        plotStack(Y_ROI,X_scanned,Z_scannedY,swapXY = True)
+        plotStack(y_roi,X_scanned,Z_scannedY,swapXY = True)
         plt.plot(X_scanned,y_maximizing,np.zeros(len(y_maximizing)),'-g',linewidth=4)
         plt.plot(X_scanned,np.ones(len(y_maximizing))*guessVal_y,np.zeros(len(y_maximizing)),'--k')
         plt.title("Y scan")
@@ -84,8 +84,7 @@ def determine_guess_params(z_roi,x_roi,y_roi,preliminaryScanNumber,verbose=False
     topVals_culled = utils.nix_outliers(topVals,never_output_empty=True) # Throws away statistical outliers
     guessVal_offset_xscan = np.mean(bottomVals_culled) # Gives the guess for the offset based on the X scans
     guessVal_amplitude_xscan = np.mean(topVals_culled) - guessVal_offset_xscan # Guess for amplitude based on the X scans
-    #print("guessVal_amplitude_xscan",guessVal_amplitude_xscan)
-    #print("guessVal_offset_xscan",guessVal_offset_xscan)
+
     F_x = z_roi[Y_indexClosest,:] - guessVal_offset_xscan # Subtracts away offset from the cross-section
     mean_F_x, var_F_x = utils.pdf_mean_var(F_x)
     guessVal_sigma_x = np.sqrt(var_F_x) # Gets the guess for sigma from a numerical integral
@@ -105,26 +104,18 @@ def determine_guess_params(z_roi,x_roi,y_roi,preliminaryScanNumber,verbose=False
         plt.show(block=False)
 
     #Determine guess for sigma_y
-    X_indexClosest = utils.find_nearest(guessVal_x,x_roi) # Finds the index of the curve closest to 2D guassian peak
-    NtenPercent = int(len(z_roi[X_indexClosest,:])*0.1)+1 # 10% of the number of values in this cross-section. +1 for safety
-    bottomVals = np.partition(z_roi[X_indexClosest,:],NtenPercent)[:NtenPercent] # The smallest 10% of the cross-section plot
-    topVals = np.partition(z_roi[X_indexClosest,:],-NtenPercent)[-NtenPercent:] # The largest 10% of the cross-section plot
-    #print(topVals,"topVals")
+    X_indexClosest = utils.find_nearest(guessVal_x, x_roi) # Finds the index of the curve closest to 2D guassian peak
+    NtenPercent = int(len(z_roi[:,X_indexClosest])*0.1)+1 # 10% of the number of values in this cross-section. +1 for safety
+    bottomVals = np.partition(z_roi[:,X_indexClosest],NtenPercent)[:NtenPercent] # The smallest 10% of the cross-section plot
+    topVals = np.partition(z_roi[:,X_indexClosest],-NtenPercent)[-NtenPercent:] # The largest 10% of the cross-section plot
     bottomVals_culled = utils.nix_outliers(bottomVals,never_output_empty=True) # Throws away statistical outliers. Returns [0] if input was empty
     topVals_culled = utils.nix_outliers(topVals,never_output_empty=True) # Throws away statistical outliers
-    #print(topVals_culled,"topVals_culled")
     guessVal_offset_yscan = np.mean(bottomVals_culled) # Gives the guess for the offset based on the Y scans
     guessVal_amplitude_yscan = np.mean(topVals_culled) - guessVal_offset_yscan #guess for amplitude based on the Y scans
-    #print(guessVal_offset_yscan,"guessVal_offset_yscan")
-    #print(guessVal_amplitude_yscan,"guessVal_amplitude_yscan")
-    #print("guessVal_amplitude_yscan",guessVal_amplitude_yscan)
-    #print("guessVal_offset_yscan",guessVal_offset_yscan)
-    F_y = z_roi[X_indexClosest,:] - guessVal_offset_yscan # Subtracts away offset from the cross-section
+
+    F_y = z_roi[:,X_indexClosest] - guessVal_offset_yscan # Subtracts away offset from the cross-section
     mean_F_y, var_F_y = utils.pdf_mean_var(F_y)
     guessVal_sigma_y = np.sqrt(var_F_y) # Gets the guess for sigma from a numerical integral
-
-    #print("guessVal_sigma_x",guessVal_sigma_x)
-    #print("guessVal_sigma_y",guessVal_sigma_y)
 
     if verbose == True:
         plt.figure()
@@ -192,13 +183,13 @@ def fit_image_to_gaussian(pixel_data, preliminary_scan_number = [20,20], return_
     # Hard physical and mathematical boundaries on the fit parameters
     
     if pixel_data.dtype == np.uint8:
-        bounds_prms = ([0,0,0,0,0,0,-np.pi/2],[w,h,sci.inf,sci.inf,2**8,2**8,np.pi/2])
+        bounds_prms = ([0,0,0,0,0,0,-np.pi/2],[w,h,np.inf,np.inf,2**8,2**8,np.pi/2])
     if pixel_data.dtype == np.uint16:
-        bounds_prms = ([0,0,0,0,0,0,-np.pi/2],[w,h,sci.inf,sci.inf,2**16,2**16,np.pi/2])
+        bounds_prms = ([0,0,0,0,0,0,-np.pi/2],[w,h,np.inf,np.inf,2**16,2**16,np.pi/2])
     if pixel_data.dtype == np.float32:
-        bounds_prms = ([0,0,0,0,-2**32,-2**32,-np.pi/2],[w,h,sci.inf,sci.inf,2**32,2**32,np.pi/2])
+        bounds_prms = ([0,0,0,0,-2**32,-2**32,-np.pi/2],[w,h,np.inf,np.inf,2**32,2**32,np.pi/2])
     if pixel_data.dtype == np.float64:
-        bounds_prms = ([0,0,0,0,-2**64,-2**64,-np.pi/2],[w,h,sci.inf,sci.inf,2**64,2**64,np.pi/2])
+        bounds_prms = ([0,0,0,0,-2**64,-2**64,-np.pi/2],[w,h,np.inf,np.inf,2**64,2**64,np.pi/2])
     
 
     # The two-dimensional domain of the fit.
@@ -241,19 +232,19 @@ def fit_image_to_gaussian(pixel_data, preliminary_scan_number = [20,20], return_
         fig = plt.figure()
         ax = plt.axes(projection='3d')
         #ax.plot_surface(X, Y, Z, cmap='plasma')
-        ax.plot_surface(X, Y, fit, cmap='plasma')
-        ax.set_zlim(0,np.max(Z)+2)
-        cset = ax.contourf(X, Y, fit, zdir='z', offset=-4, cmap='plasma')
+        ax.plot_surface(x_mesh, y_mesh, fit, cmap='plasma')
+        ax.set_zlim(0,np.max(pixel_data)+2)
+        cset = ax.contourf(x_mesh, y_mesh, fit, zdir='z', offset=-4, cmap='plasma')
         #ax.set_zlim(-4,np.max(fit))
         plt.show()
         # Plot the test data as a 2D image and the fit as overlaid contours.
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.imshow(Z, origin='lower', cmap='plasma',
+        ax.imshow(pixel_data, origin='lower', cmap='plasma',
                   extent=(x_roi.min(), x_roi.max(), y_roi.min(), y_roi.max()),zorder=1)
         #levels = [np.exp(-0.5)*popt[4],np.exp(-2)*popt[4],np.exp(-9/2)*popt[4]]
         #print(popt[4])
-        ax.contour(X, Y, fit, colors='w',levels = [popt[5]+np.exp(-4.5)*popt[4],popt[5]+np.exp(-2)*popt[4],popt[5]+np.exp(-1/2)*popt[4]],zorder=2)
+        ax.contour(x_mesh, y_mesh, fit, colors='w',levels = [popt[5]+np.exp(-4.5)*popt[4],popt[5]+np.exp(-2)*popt[4],popt[5]+np.exp(-1/2)*popt[4]],zorder=2)
         #Draw annotation lines that indicate contour lengths. 1, 2, & 3 sigma contours are shown for the gaussian
         startX = popt[0]
         startY = popt[1]
@@ -276,8 +267,8 @@ def fit_image_to_gaussian(pixel_data, preliminary_scan_number = [20,20], return_
         # Plot the test data as a 2D image and the fit as overlaid contours.
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.imshow(pixel_data, origin='lower', cmap='plasma',
-                  extent=(x_roi.min(), y_roi.max(), y_roi.min(), y_roi.max()),zorder=1)
+        ax.imshow(pixel_data, origin='lower', cmap='plasma')
+                  # ~ extent=(x_roi.min(), y_roi.max(), y_roi.min(), y_roi.max()),zorder=1)
         #levels = [np.exp(-0.5)*popt[4],np.exp(-2)*popt[4],np.exp(-9/2)*popt[4]]
         #print(popt[4])
         ax.contour(x_mesh, y_mesh, fit, colors='w',levels = [popt[5]+np.exp(-4.5)*popt[4],popt[5]+np.exp(-2)*popt[4],popt[5]+np.exp(-1/2)*popt[4]],zorder=2)
@@ -318,5 +309,7 @@ def plotStack(x, y, Z,swapXY=False):
 
 
 if __name__ == '__main__':
-    image = tifffile.imread(r"C:\Users\thoma\OneDrive - UCLA IT Services\Documents\GitHub\smartScan\initialRoi_0.tiff")
-    fit_image_to_gaussian(image,verbose=True)
+    image = tifffile.imread(r"test_roi_3.tif")
+    fit_image_to_gaussian(image, verbose = False, return_figs = True)
+    
+    plt.show()

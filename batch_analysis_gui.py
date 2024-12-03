@@ -5,7 +5,6 @@ Description:
     GUI for the UED data analysis program
 """
 
-
 """
 The goal of this script is to provide a user interface for data analysis.
 
@@ -127,9 +126,12 @@ def make_profile_plot3d(time, data, xdata, tlabel, xlabel, rootTitle, title):
   
 class timeTraceGUI():
     def __init__(self, scandir, wait = .033):
+        self.scandir = scandir
+        dirlist = os.listdir(self.scandir)
+        if not 'average' in dirlist:
+            raise FileNotFoundError('The "average" directory is missing. scandir must be in smartscan format')
         # Load the images from the scandir - directory format is in smart scan layout
-        # This function assumes the scan is for a single fluence
-        self.dsPositions, self.imageSet = utils.load_images_smartscan_single_fluence(scandir)
+        self.dsPositions, self.imageSet = utils.load_images_smartscan_single_fluence(f'{self.scandir}//average') # This function assumes the scan is for a single fluence
         
         image_0 = self.imageSet[0]
         self.h, self.w = np.shape(image_0)        
@@ -178,8 +180,8 @@ class timeTraceGUI():
         self.dataFrame.pack(side=tk.LEFT)
         
         self.measureSelection = tk.StringVar(self.controls)
-        self.measureSelection.set("time trace of gaussian fit") # default value
-        self.measureSelectionMenu = tk.OptionMenu(self.controls, self.measureSelection, "time trace of gaussian fit", "static gaussian fit to current image", "time trace of profile", "static profile of current image")
+        self.measureSelection.set("time trace of pixel sum") # default value
+        self.measureSelectionMenu = tk.OptionMenu(self.controls, self.measureSelection, "time trace of pixel sum", "time trace of gaussian fit", "static gaussian fit to current image", "time trace of profile", "static profile of current image")
         
         self.tZeroPos_label_string = tk.StringVar()
         self.tZeroPos_label_string.set(f'Time Zero Pos = {self.timeZeroPos} mm')
@@ -205,23 +207,72 @@ class timeTraceGUI():
             self.datacanvas.draw()
         self.convertToTimeBox = tk.Checkbutton(master=self.controls, text='Convert to Time (ps)',variable=self.varConvertToTime, onvalue=1, offvalue=0, command = convertToTimeFunc ,bg=cntrlBg)
         
+        self.varNormalizeToBtz = tk.IntVar()
+        # When the normalize to before time zero check box state is changed, update the data plot xdata and replot the data plot
+        def normalizeToBtzFunc():
+            self.getTrace()
+        self.normalizeToBtzBox = tk.Checkbutton(master=self.controls, text='Normalize to btz', variable = self.varNormalizeToBtz, onvalue=1, offvalue=0, command = normalizeToBtzFunc, bg = cntrlBg)
+        
         def measureButtonFunc():
             selection = self.measureSelection.get()
+            if selection == "time trace of pixel sum":
+                rmLoc = [] # Local rm array that only stores the live rois
+                for r in self.rm:
+                    # Only count an ROI if it is active
+                    if r.live:
+                        rmLoc.append(r)
+                pixel_sums = np.empty([len(rmLoc), len(self.activexdata)])
+                roi_areas = np.empty(len(rmLoc))
+                for ri in range(len(rmLoc)):
+                    for p in range(len(self.activexdata)):
+                        roiImage = rmLoc[ri].getRoiImage(self.imageSet[p])
+                        pixel_sums[ri, p] = np.sum(roiImage)
+                    roi_areas[ri] = roiImage.shape[0]*roiImage.shape[1]
+                        
+                fig, ax = plt.subplots(2,1)
+                avg_intensity = np.sum(pixel_sums, axis=0)/np.sum(roi_areas)
+                ax[0].plot(self.activexdata, avg_intensity)
+                ax[0].set_xlabel(self.activexlabel)
+                ax[0].set_ylabel('Avg Intensity')
+                for ri in range(len(rmLoc)):
+                    ax[1].plot(self.activexdata,pixel_sums[ri]/roi_areas[ri], label = f'{int(self.rm[ri].cx)}, {int(self.rm[ri].cy)}')
+                ax[1].set_xlabel(self.activexlabel)
+                ax[1].set_ylabel('Intensity')
+                ax[1].legend()
+                
+                dataToSave = np.array([self.dsPositions,avg_intensity]).transpose()
+                make_separate_plot_window(fig, 'Intensity Plot', data = dataToSave, dataHeader = 'dsPos (mm), intensity')
             if selection == "static profile of current image":
                 for r in self.rm:
                     # Only count an ROI if it is active
                     if r.live:
-                        r.getProfile(self.imageSet[self.liveImageIndex])
+                        xpixels, lineprofile_x, ypixels, lineprofile_y, cx, cy = r.getProfile(self.imageSet[self.liveImageIndex])
+                            
+                        rootTitle = f"Profiles, c_x, c_y = {int(cx)}, {int(cy)}"
+                        
+                        # Create the separate figure
+                        fig, axs = plt.subplots(1,2)
+                        
+                        axs[0].plot(xpixels,lineprofile_x)
+                        axs[0].set_xlabel('X Axis (pixels)')
+                        axs[0].set_title('Averaged over Y Axis')
+                        axs[1].plot(ypixels,lineprofile_y)
+                        axs[1].set_xlabel('Y Axis (pixels)')
+                        axs[1].set_title('Averaged over X Axis')
+                        
+                        dataToSave = [lineprofile_x,lineprofile_y]
+                        header = ['x profile', 'y profile']
+                        make_separate_plot_window(fig, rootTitle, data = dataToSave, dataHeader = header)            
             if selection == "time trace of profile":
                 for r in self.rm:
                     # Only count an ROI if it is active
                     if r.live:
-                        data_0 = r.getProfile(self.imageSet[0], genPlots = False)
+                        data_0 = r.getProfile(self.imageSet[0])
                         data_x = np.empty([len(self.activexdata),len(data_0[1])])
                         data_y = np.empty([len(self.activexdata),len(data_0[3])])
                         
                         for p in range(len(self.activexdata)):
-                           _ , data_x[p], _ , data_y[p] = r.getProfile(self.imageSet[p], genPlots = False)
+                           _ , data_x[p], _ , data_y[p], _, _ = r.getProfile(self.imageSet[p])
                         
                         make_profile_plot3d(self.activexdata, data_x, data_0[0], self.activexlabel, 'X-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over Y Axis")
                         make_profile_plot3d(self.activexdata, data_y, data_0[2], self.activexlabel, 'Y-axis', f"Profiles, c_x, c_y = {int(r.cx)}, {int(r.cy)}","Averaged over X Axis")
@@ -230,6 +281,7 @@ class timeTraceGUI():
                     # Only count an ROI if it is active
                     if r.live:
                         roiImage = r.getRoiImage(self.imageSet[self.liveImageIndex])
+                        print('roiImage.shape',roiImage.shape)
                         fig, ax, popt, rms, guess_prms = translationcorr.fit_image_to_gaussian(roiImage, return_figs = True)
                         # Translate the x and y fit values back to the coordinate system of the full image
                         popt[0] += r.cx - r.w/2 
@@ -309,6 +361,27 @@ class timeTraceGUI():
             height=1,
             fg='black', bg='white',
             command=measureButtonFunc)
+        
+        def batchAnalysisButtonFunc():
+            dirlist = os.listdir(self.scandir)
+            
+            selection = self.measureSelection.get()
+            if selection == "time trace of pixel sum":
+                rmLoc = [] # Local rm array that only stores the live rois
+                for r in self.rm:
+                    # Only count an ROI if it is active
+                    if r.live:
+                        rmLoc.append(r)
+                pixel_sums = np.empty([len(rmLoc), len(self.activexdata)])
+                roi_areas = np.empty(len(rmLoc))
+
+        self.batchAnalysisButton = tk.Button(
+            master=self.controls,
+            text="Analyze Batches",
+            width=buttonWidth,
+            height=1,
+            fg='black', bg='white',
+            command=batchAnalysisButtonFunc)
         
         self.varDifferenceImage = tk.IntVar()
         # When the convert to time check box state is changed, update the data plot xdata and replot the data plot
@@ -403,6 +476,7 @@ class timeTraceGUI():
                 convertToTimeFunc() # Recompute the x-axis of the data plots based on this time zero position
                 self.updateImageTitle() # Update the image title based on this time zero position
                 self.canvas.draw() # redraw the canvas so this change is updated on the gui
+                self.getTrace() # redraw the data trace
             if entry == self.bgSubtractValueEntry:
                 if self.bgSubtractValueEntry.get() == '':
                     self.bgSubtractValueEntry.insert(-1,0)
@@ -424,6 +498,7 @@ class timeTraceGUI():
         tZeroPos_label.pack(pady = padyControls, anchor='nw')
         self.tZeroPosEntry.pack(pady = padyControls, anchor='nw')
         self.convertToTimeBox.pack(pady = padyControls, anchor='nw')
+        self.normalizeToBtzBox.pack(pady = padyControls, anchor='nw')
         tk.Frame(master=self.controls, bd=100, relief='flat',height=sepHeight,width=sepWidth,bg='black').pack(side='top', pady=padySep)
         bgSubtractValue_label.pack(pady = padyControls, anchor='nw')
         self.bgSubtractValueEntry.pack(pady = padyControls, anchor='nw')
@@ -432,6 +507,7 @@ class timeTraceGUI():
         tk.Label(master=self.controls,text='Measurements',bg=cntrlBg).pack(pady=padyControls, anchor='nw')
         self.measureSelectionMenu.pack(pady = padyControls, anchor='nw')
         self.measureButton.pack(pady = padyControls, anchor='nw')
+        self.batchAnalysisButton.pack(pady = padyControls, anchor='nw')
         tk.Frame(master=self.controls, bd=100, relief='flat',height=sepHeight,width=sepWidth,bg='black').pack(side='top', pady=padySep)
         self.savePixelSumPlotButton.pack(pady = padyControls, anchor='nw')
                 
@@ -472,6 +548,7 @@ class timeTraceGUI():
         self.imageFig.canvas.mpl_connect('button_release_event', self.camonrelease)
         self.imageFig.canvas.mpl_connect('scroll_event', self.camonscroll)
         self.imageFig.canvas.mpl_connect('motion_notify_event', self.camonmove)
+        self.imageFig.canvas.mpl_connect('key_press_event', self.keypress)
         
         # Build sliders for adjusting the brightness and contrast of the image
         ax_setVals = [plt.axes([0.15, 0.10, 0.5, 0.02]), plt.axes([0.15, 0.06, 0.5, 0.02]), plt.axes([0.15, 0.02, 0.5, 0.02])]
@@ -606,6 +683,7 @@ class timeTraceGUI():
             # compute new limits
             xlims = [xdata - (xdata-cur_xlim[0]) / scale_factor, xdata + (cur_xlim[1]-xdata) / scale_factor]
             ylims = [ydata - (ydata-cur_ylim[0]) / scale_factor, ydata + (cur_ylim[1]-ydata) / scale_factor]
+            
             # make sure the limits aren't too big
             if (xlims[1]-xlims[0] > self.w) or (ylims[0]-ylims[1] > self.h):
                 xlims = [0, self.w]
@@ -613,24 +691,28 @@ class timeTraceGUI():
 
             # make sure the limits don't fall outside the image size
             if xlims[0] < 0:
-                xlims[0] += -xlims[0]
-                xlims[1] += -xlims[0]
+                delta = xlims[0]
+                xlims[0] += -delta
+                xlims[1] += -delta
                 
             if xlims[1] > self.w:
-                xlims[0] += self.w-xlims[1]
-                xlims[1] += self.w-xlims[1]
+                delta = xlims[1]
+                xlims[0] += self.w - delta
+                xlims[1] += self.w - delta
             
             if ylims[1] < 0:
-                ylims[1] += -ylims[1]
-                ylims[0] += -ylims[1]
+                delta = ylims[1]
+                ylims[1] += -delta
+                ylims[0] += -delta
                 
             if ylims[0] > self.h:
-                ylims[0] += self.h-ylims[0]
-                ylims[1] += self.h-ylims[0]
+                delta = ylims[0]
+                ylims[0] += self.h - delta
+                ylims[1] += self.h - delta
                 
                 
-            print('xlims',xlims)
-            print('ylims',ylims)
+            # ~ print('xlims',xlims)
+            # ~ print('ylims',ylims)
             
             # set the new limits
             ax.set_xlim(*xlims)
@@ -651,7 +733,28 @@ class timeTraceGUI():
                 if self.relocatingRoi != None:
                     self.relocatingRoi.updatePosition(event.xdata - self.relocatePin_x, event.ydata - self.relocatePin_y)
                     self.canvas.draw()
-                
+    
+    def keypress(self, event):
+        if event.key[:4] == 'ctrl':
+            if event.key[5:].isnumeric():
+                group = int(event.key[5:])
+                if self.relocatingRoi != None:
+                    self.relocatingRoi.group = group
+                if self.roiActive:
+                    self.rm[-1].group = group
+        if event.key.isnumeric():
+            group = int(event.key)
+            for i in range(len(self.rm)):
+                self.rm[i].goDead()
+                if self.rm[i].group == group:
+                    if self.rm[i].live:
+                        self.rm[i].goDead()
+                    else:
+                        self.rm[i].goLive()
+                        
+            self.getTrace() # Draw the new time trace with this ROI
+            self.canvas.draw() # Update ROI colors
+                    
     def clearRois(self):
         # Clear all existing ROIS
         for i in range(len(self.rm)):
@@ -666,7 +769,7 @@ class timeTraceGUI():
         w = max(self.activexdata) - min(self.activexdata)
         h = max(self.dataSignal) - min(self.dataSignal)
         self.dataAx.set_xlim([min(self.activexdata) - 0.02*w, max(self.activexdata) + 0.02*w])
-        self.dataAx.set_ylim([min(self.dataSignal) - 0.02*h - 0.1, max(self.dataSignal) + 0.02*h + 0.1])
+        self.dataAx.set_ylim([min(self.dataSignal) - 0.02*h, max(self.dataSignal) + 0.02*h])
     
     def getTrace(self):
         if len(self.rm) > 0:
@@ -685,14 +788,19 @@ class timeTraceGUI():
                 if roiTotalArea > 0:        
                     self.dataSignal[p] = (roiPixelSum)/roiTotalArea - self.bgSubtractValue
                     
-            
             if roiTotalArea > 0:
+                if self.varNormalizeToBtz.get() == 1:
+                    index = np.argmin(np.abs(self.timeZeroPos - self.dsPositions))
+                    btz_avg = np.mean(self.dataSignal[index:])
+                    if btz_avg > 0:
+                        self.dataSignal = self.dataSignal/btz_avg
+                
                 self.dataPlot.set_ydata(self.dataSignal)
                 self.updateDataPlotLimit()
                 self.dataAx.set_title(f'Average ROI pixel value, bg subtract = {self.bgSubtractValue}')
-                
         else:
             self.dataSignal = 0*self.dataSignal
+        
         self.datacanvas.draw()
     
         

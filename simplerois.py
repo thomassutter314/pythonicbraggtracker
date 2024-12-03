@@ -1,8 +1,10 @@
 import matplotlib.patches as patches
 import numpy as np
+import matplotlib.pyplot as plt
 
 class RoiRectangle():
     def __init__(self,cx,cy,w,h,ax):
+        self.group = None
         self.cx = cx
         self.cy = cy
         self.w = w
@@ -70,7 +72,7 @@ class RoiRectangle():
     def getRoiImage(self, image):
         return image[int(self.cy-self.h/2):int(self.cy+self.h/2),int(self.cx-self.w/2):int(self.cx+self.w/2)]
         
-    def getProfile(self, image, genPlots = True):
+    def getProfile(self, image):
         imageRoi = self.getRoiImage(image)
         
         lineprofile_x = np.mean(imageRoi, axis = 0)
@@ -79,24 +81,7 @@ class RoiRectangle():
         xpixels = np.linspace(self.cx-self.w/2,self.cx+self.w/2,len(lineprofile_x))
         ypixels = np.linspace(self.cy-self.h/2,self.cy+self.h/2,len(lineprofile_y))
         
-        if genPlots:
-            rootTitle = f"Profiles, c_x, c_y = {int(self.cx)}, {int(self.cy)}"
-            
-            # Create the separate figure
-            fig, axs = plt.subplots(1,2)
-            
-            axs[0].plot(xpixels,lineprofile_x)
-            axs[0].set_xlabel('X Axis (pixels)')
-            axs[0].set_title('Averaged over Y Axis')
-            axs[1].plot(ypixels,lineprofile_y)
-            axs[1].set_xlabel('Y Axis (pixels)')
-            axs[1].set_title('Averaged over X Axis')
-            
-            dataToSave = [lineprofile_x,lineprofile_y]
-            header = ['x profile', 'y profile']
-            make_separate_plot_window(fig, rootTitle, data = dataToSave, dataHeader = header)
-
-        return xpixels, lineprofile_x, ypixels, lineprofile_y
+        return xpixels, lineprofile_x, ypixels, lineprofile_y, self.cx, self.cy
 
     def checkClicked(self, mouse_x, mouse_y):
         # Was the click inside this roi
