@@ -365,7 +365,7 @@ class timeTraceGUI():
             command=measureButtonFunc)
         
         def batchAnalysisButtonFunc():
-                        # ~ selection = self.measureSelection.get()
+            # ~ selection = self.measureSelection.get()
             # ~ if selection == "time trace of pixel sum":
             
             rmLoc = [] # Local rm array that only stores the live rois
@@ -838,5 +838,5 @@ class timeTraceGUI():
     
         
 if __name__ == '__main__':
-    guiObj = timeTraceGUI(scandir = r"C:\Users\thoma\OneDrive - UCLA IT Services\Desktop\OneDrive - UCLA IT Services\Research\TaS2SelfIntercalationProject\exhibits\G\2024_7_9_2x2LongScan_prelim\2024_7_9_2x2LongScan_prelim")
+    guiObj = timeTraceGUI(scandir = r"C:\Users\Kogar\Documents\electron_beam_photos\scans\2024_12_15_weekendScan\2Ko_1st")
     # ~ guiObj = timeTraceGUI(scandir = r"D:\2024_8_9_check_t0_scan_5")
