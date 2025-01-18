@@ -679,6 +679,7 @@ class timeTraceGUI():
                         if self.rm[i].live:
                             self.rm[i].goDead()
                         else:
+                            self.rm[i].flipSign()
                             self.rm[i].goLive()
                         
                         if event.key == 'control':
@@ -838,5 +839,5 @@ class timeTraceGUI():
     
         
 if __name__ == '__main__':
-    guiObj = timeTraceGUI(scandir = r"C:\Users\Kogar\Documents\electron_beam_photos\scans\2024_12_15_weekendScan\2Ko_1st")
+    guiObj = timeTraceGUI(scandir = r"C:\Users\kogar\OneDrive\Documents\project_folders\UED_VTe2\raw_scans_fluences\5Ko_4th")
     # ~ guiObj = timeTraceGUI(scandir = r"D:\2024_8_9_check_t0_scan_5")

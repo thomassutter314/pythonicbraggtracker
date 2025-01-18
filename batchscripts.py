@@ -104,10 +104,15 @@ def fit_batches(data_loc, bin_size = 1, fit_func = G1, p0 = [0, 0.2, 0.4], plot_
     plt.show()
 
 # Read in specific batches and plot average
-def fit_batch_set(data_loc, t0pos, batches, fit_func = G1, p0 = [0, 0.2, 0.4],
-                  plot_guess = False, plot_individual_batches = False, plot = True, save = True):
+def fit_batch_set(data_loc, bg_loc = '', t0pos = 0, batches = [0], fit_func = G1, p0 = [0, 0.2, 0.4],
+                  plot_guess = False, plot_individual_batches = True, plot = True, save = True):
+                      
     data_raw = np.loadtxt(data_loc, skiprows = 1, delimiter = ',')
-    signals_raw = data_raw[:, 1:]
+    if bg_loc != '':
+        bg_raw = np.loadtxt(bg_loc, skiprows = 1, delimiter = ',')
+        signals_raw = data_raw[:, 1:]/bg_raw[:, 1:]
+    else:
+        signals_raw = data_raw[:, 1:]
     dsPos = data_raw[:, 0]
     times = 6.67*(t0pos - dsPos)
     # ~ times = dsPos
@@ -192,15 +197,22 @@ def average_batches(scan_dir, save_dir, batch_list = [0, 1], image_dtype = np.fl
         print(f'Saving image: {dsPosString_arr[pi]}')
         tifffile.imwrite(f'{save_dir}//pos={dsPosString_arr[pi]}.tiff', images_avg[pi])
             
-            
 
 if __name__ == '__main__':
-    # ~ fit_batches(data_loc = r'F:\2024_12_6_KrampusWeekendScans_VTe2_fluenceSet\analysis\2Ko_2nd_batches.csv', 
-                # ~ bin_size = 5, fit_func = G1)
-                # ~ bin_size = 4, fit_func = G2, p0 = [0.3,  0.2, 0.2, 0.1, 1], plot_guess = False)
-
-    fit_batch_set(data_loc = r'F:\2024_12_6_KrampusWeekendScans_VTe2_fluenceSet\analysis\2Ko_new_batches.csv',
-                plot = True, t0pos = 57.7 + 0.114/6.67, batches = [6,7,9,10,11,12,13,14], fit_func = G2, p0 = [0.3,  0.2, 0.2, 0.1, 1], plot_guess = False)        
+    # ~ fit_batches(data_loc = r"C:\Users\kogar\OneDrive\Documents\project_folders\UED_VTe2\fluence_scans_batch_analysis\5Ko_cdw110.csv", 
+                # ~ bin_size = 1, fit_func = G1)
+                # ~ bin_size = 5, fit_func = G2, p0 = [0.3,  0.2, 0.2, 0.1, 1], plot_guess = False)
+                
+    # ~ [6,7,9,10,11,12,13,14]
+    
+    fit_batch_set(data_loc = r"C:\Users\kogar\OneDrive\Documents\project_folders\UED_VTe2\fluence_scans_batch_analysis\4Ko_bragg110.csv",
+                  # ~ bg_loc = r"C:\Users\kogar\OneDrive\Documents\project_folders\UED_VTe2\fluence_scans_batch_analysis\2Ko_cdw110_bg.csv",
+                  plot = True, t0pos = 57.7 - 0.117/6.67, batches = [5,6,7,8,9,10], fit_func = G2, p0 = [0.3,  0.2, 0.2, 0.1, 1], plot_guess = False)        
+    
+    # ~ fit_batch_set(data_loc = r"C:\Users\kogar\OneDrive\Documents\project_folders\UED_VTe2\fluence_scans_batch_analysis\2Ko_cdw110_bg.csv",
+              # ~ bg_loc = '',
+              # ~ plot = True, t0pos = 57.7 + 0.114/6.67, batches = [6,7,9,10,11,12,13,14], fit_func = G2, p0 = [0.3,  0.2, 0.2, 0.1, 1], plot_guess = False)        
+    
     
     # To compare two scans
     if False:

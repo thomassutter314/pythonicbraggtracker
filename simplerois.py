@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 class RoiRectangle():
     def __init__(self,cx,cy,w,h,ax):
         self.group = None
+        self.sign = 1 # Does the ROI count positive or negative
         self.cx = cx
         self.cy = cy
         self.w = w
@@ -13,8 +14,9 @@ class RoiRectangle():
         tl_y = self.cy - h/2
         self.patch = patches.Rectangle((tl_x, tl_y), self.w, self.h, linewidth=1, edgecolor='r', facecolor='none', alpha=0.8)
         self.live = False
-        self.onColor = 'white'
-        self.offColor = 'red'
+        self.onColor_positive = '#FF7E85'
+        self.onColor_negative = '#7E85FF'
+        self.offColor = '#969595'
         
         self.cRadius = 1
         # ~ self.cpatch = patches.Circle((self.cx,self.cy),self.cRadius, edgecolor=(1, 0, 0, 0.5), facecolor=(1, 0, 0, 1),fill=False)
@@ -42,6 +44,17 @@ class RoiRectangle():
         self.patch.set_xy((tl_x,tl_y)) # Update patch top left corner
         self.roiTitle.set_position((tl_x, tl_y-self.title_y_offset))
         self.roiTitle.set_text(f'{int(self.cx)}, {int(self.cy)}')
+        
+    def flipSign(self):
+        # flip the sign
+        if self.sign == 1:
+            self.sign = -1
+            self.patch.set_edgecolor(self.onColor_negative)
+            self.roiTitle.set_color(self.onColor_negative)
+        else:
+            self.sign = 1
+            self.patch.set_edgecolor(self.onColor_positive)
+            self.roiTitle.set_color(self.onColor_positive)
     
     def goDead(self):
         self.patch.set_edgecolor(self.offColor)
@@ -49,6 +62,14 @@ class RoiRectangle():
         self.live = False
         
     def goLive(self):
+        # flip the sign
+        if self.sign == -1:
+            self.patch.set_edgecolor(self.onColor_negative)
+            self.roiTitle.set_color(self.onColor_negative)
+        else:
+            self.patch.set_edgecolor(self.onColor_positive)
+            self.roiTitle.set_color(self.onColor_positive)
+        
         if self.w < 1:
             self.w = 1 # Minimum width is a single pixel
         if self.h < 1:
@@ -58,8 +79,6 @@ class RoiRectangle():
         self.patch.set_xy((tl_x,tl_y)) # Update patch top left corner
         self.patch.set_width(self.w) # Update the patch with new width
         self.patch.set_height(self.h) # Update the patch with new height
-        self.patch.set_edgecolor(self.onColor)
-        self.roiTitle.set_color(self.onColor)
         self.live = True
         
     def updateAxis(self, ax):
@@ -70,7 +89,7 @@ class RoiRectangle():
         ax.add_patch(self.patch) # Add the patch to the axis
         
     def getRoiImage(self, image):
-        return image[int(self.cy-self.h/2):int(self.cy+self.h/2),int(self.cx-self.w/2):int(self.cx+self.w/2)]
+        return self.sign*image[int(self.cy-self.h/2):int(self.cy+self.h/2),int(self.cx-self.w/2):int(self.cx+self.w/2)]
         
     def getProfile(self, image):
         imageRoi = self.getRoiImage(image)
